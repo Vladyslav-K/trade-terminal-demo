@@ -201,6 +201,10 @@ export function buildFrame(marketCount: number): OutgoingMessage<FrameMessage> {
   return { message, transfer };
 }
 
+export function getSelectedMarket(): number {
+  return selectedMarket;
+}
+
 export function markAllDirty(): void {
   dirty.fill(1);
 }

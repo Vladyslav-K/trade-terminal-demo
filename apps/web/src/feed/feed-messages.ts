@@ -1,4 +1,5 @@
 import type {
+  FaultKind,
   MarketInfo,
   StreamConfig,
   StreamLimits,
@@ -38,13 +39,20 @@ export interface SetNotionalMessage {
   notional: number;
 }
 
+// A drop fault hits the selected market on venue 0.
+export interface FaultRequestMessage {
+  type: 'fault';
+  kind: FaultKind;
+}
+
 export type MainToWorkerMessage =
   | InitMessage
   | PullMessage
   | VisibilityMessage
   | SetConfigMessage
   | SelectMessage
-  | SetNotionalMessage;
+  | SetNotionalMessage
+  | FaultRequestMessage;
 
 // The selected market's book slices and its open candle, laid out as
 // described in frame-layout.ts.

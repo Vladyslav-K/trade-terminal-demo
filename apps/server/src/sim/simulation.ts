@@ -39,6 +39,7 @@ const HISTORY_SLOTS = SHIFT_WINDOW_SEC + 1;
 interface VenueState extends AnchoredBook {
   offset: number;
   offsetUpdatedAt: number;
+  isNextDeltaDropped: boolean;
 }
 
 interface MarketState {
@@ -54,8 +55,10 @@ interface MarketState {
 export interface Simulation {
   markets: MarketInfo[];
   snapshot(m: number, x: number, ts: number): SnapshotMessage;
-  // Runs one event and appends 1 to 3 messages to out.
+  // Runs one event and appends up to 3 messages to out.
   step(ts: number, out: ServerMessage[]): void;
+  // The next delta of the (m, x) book advances seq but is not emitted.
+  skipNextDelta(m: number, x: number): void;
 }
 
 function itemAt<T>(items: readonly T[], index: number): T {
@@ -177,6 +180,10 @@ export function createSimulation(
   ): void => {
     venue.book.seq += 1;
     const { b, a } = editor.takeDelta(venue.book);
+    if (venue.isNextDeltaDropped) {
+      venue.isNextDeltaDropped = false;
+      return;
+    }
     out.push({ t: 'd', m, x, seq: venue.book.seq, ts, b, a });
   };
 
@@ -283,6 +290,7 @@ export function createSimulation(
       mid: 0,
       offset,
       offsetUpdatedAt: Number.NaN,
+      isNextDeltaDropped: false,
     };
     editor.seed(venue, fair + offset);
     return venue;
@@ -362,5 +370,9 @@ export function createSimulation(
     return toSnapshot(venue.book, m, x, ts);
   };
 
-  return { markets: getMarkets(marketCount), snapshot, step };
+  const skipNextDelta = (m: number, x: number): void => {
+    itemAt(itemAt(marketStates, m).venues, x).isNextDeltaDropped = true;
+  };
+
+  return { markets: getMarkets(marketCount), snapshot, step, skipNextDelta };
 }

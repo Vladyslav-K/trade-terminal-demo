@@ -1,4 +1,4 @@
-import type { StreamConfig } from '@trade-terminal/protocol';
+import type { FaultKind, StreamConfig } from '@trade-terminal/protocol';
 
 import { useAppStore } from '../stores/app-store.ts';
 import type {
@@ -123,4 +123,8 @@ export function startFeed(): void {
 
 export function setConfig(config: Partial<StreamConfig>): void {
   post({ type: 'setConfig', rate: config.rate, markets: config.markets });
+}
+
+export function injectFault(kind: FaultKind): void {
+  post({ type: 'fault', kind });
 }

@@ -1,16 +1,19 @@
 import {
   BOOK_DEPTH,
   CLOSE_POLICY,
+  CLOSE_RESTART,
   DEFAULT_MARKETS,
   MARKET_COUNTS,
   PROTOCOL_VERSION,
   RATE_DEFAULT,
+  STALL_DURATION_MS,
   VENUE_COUNT,
   parseClientMessage,
 } from '@trade-terminal/protocol';
 import type {
   ClientMessage,
   ErrorCode,
+  FaultMessage,
   ServerMessage,
   SetMessage,
   StreamConfig,
@@ -30,6 +33,7 @@ const BACKPRESSURE_BYTES = 4 * 1024 * 1024;
 const MAX_BUFFERED_BYTES = 16 * 1024 * 1024;
 const COMMAND_WINDOW_MS = 1000;
 const COMMANDS_PER_WINDOW = 50;
+const FAULT_INTERVAL_MS = 500;
 const CLOSE_INTERNAL_ERROR = 1011;
 
 export interface SessionOptions {
@@ -61,7 +65,12 @@ export function createSession(ws: WebSocket, options: SessionOptions): Session {
   let throttledInWindow = 0;
   let commandWindowStart = Number.NEGATIVE_INFINITY;
   let commandsInWindow = 0;
+  let lastFaultAt = Number.NEGATIVE_INFINITY;
+  // performance.now() until which the session sends nothing and ignores commands.
+  let stalledUntil = 0;
   let isAlive = true;
+
+  const isStalled = (now: number): boolean => now < stalledUntil;
 
   const send = (message: ServerMessage): void => {
     if (ws.readyState !== WebSocket.OPEN) {
@@ -94,6 +103,9 @@ export function createSession(ws: WebSocket, options: SessionOptions): Session {
     lastTickAt = now;
 
     // Skipped ticks generate nothing, so book sequences stay continuous.
+    if (isStalled(now)) {
+      return;
+    }
     if (ws.bufferedAmount > BACKPRESSURE_BYTES) {
       throttledInWindow += 1;
       return;
@@ -129,14 +141,16 @@ export function createSession(ws: WebSocket, options: SessionOptions): Session {
     const now = performance.now();
     const elapsedMs = now - statsWindowStart;
     statsWindowStart = now;
-    send({
-      t: 'stats',
-      ts: Date.now(),
-      sent: Math.round((sentInWindow * 1000) / elapsedMs),
-      rate: config.rate,
-      buffered: ws.bufferedAmount,
-      throttled: throttledInWindow,
-    });
+    if (!isStalled(now)) {
+      send({
+        t: 'stats',
+        ts: Date.now(),
+        sent: Math.round((sentInWindow * 1000) / elapsedMs),
+        rate: config.rate,
+        buffered: ws.bufferedAmount,
+        throttled: throttledInWindow,
+      });
+    }
     sentInWindow = 0;
     throttledInWindow = 0;
   };
@@ -158,6 +172,27 @@ export function createSession(ws: WebSocket, options: SessionOptions): Session {
     }
   };
 
+  const applyFault = (command: FaultMessage): void => {
+    const now = performance.now();
+    if (now - lastFaultAt < FAULT_INTERVAL_MS) {
+      sendError('rate_limited', 'one fault per 500 ms is allowed');
+      return;
+    }
+    lastFaultAt = now;
+
+    switch (command.kind) {
+      case 'drop':
+        simulation.skipNextDelta(command.m, command.x);
+        return;
+      case 'disconnect':
+        ws.close(CLOSE_RESTART, 'disconnect requested');
+        return;
+      case 'stall':
+        stalledUntil = now + STALL_DURATION_MS;
+        return;
+    }
+  };
+
   const handleCommand = (command: ClientMessage): void => {
     switch (command.t) {
       case 'ping':
@@ -170,7 +205,7 @@ export function createSession(ws: WebSocket, options: SessionOptions): Session {
         send(simulation.snapshot(command.m, command.x, Date.now()));
         return;
       case 'fault':
-        sendError('unsupported', 'fault injection is not supported');
+        applyFault(command);
         return;
     }
   };
@@ -191,6 +226,9 @@ export function createSession(ws: WebSocket, options: SessionOptions): Session {
     }
     if (!isCommandAllowed()) {
       ws.close(CLOSE_POLICY, 'too many commands');
+      return;
+    }
+    if (isStalled(performance.now())) {
       return;
     }
     const command =

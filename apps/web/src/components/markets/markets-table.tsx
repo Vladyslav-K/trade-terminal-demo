@@ -4,8 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import { ROW_PROB, ROW_SHIFT, ROW_VOLUME } from '../../feed/frame-layout.ts';
 import { hotStore } from '../../feed/hot-store.ts';
 import { getEdge } from '../../feed/market-quotes.ts';
+import { useIsStale } from '../../hooks/use-stale-state.ts';
 import { cn } from '../../lib/cn.ts';
 import { useAppStore, type SortKey } from '../../stores/app-store.ts';
+import { StaleOverlay } from '../status/stale-overlay.tsx';
 import { EmptyState } from '../ui/empty-state.tsx';
 import { Panel } from '../ui/panel.tsx';
 import { Segmented, type SegmentedOption } from '../ui/segmented.tsx';
@@ -89,6 +91,7 @@ export function MarketsTable() {
   const sortKey = useAppStore((state) => state.sortKey);
   const setSortKey = useAppStore((state) => state.setSortKey);
   const selectMarket = useAppStore((state) => state.selectMarket);
+  const isStale = useIsStale();
   const marketCount = markets.length;
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -140,6 +143,7 @@ export function MarketsTable() {
   return (
     <Panel
       title="Markets"
+      overlay={isStale && <StaleOverlay />}
       actions={
         <Segmented
           options={SORT_OPTIONS}

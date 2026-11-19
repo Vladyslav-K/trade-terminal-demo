@@ -21,6 +21,7 @@ import {
   CANDLE_TIME,
 } from '../../feed/frame-layout.ts';
 import { hotStore } from '../../feed/hot-store.ts';
+import { useIsStale } from '../../hooks/use-stale-state.ts';
 import {
   CHART_COLORS,
   CHART_FONT_FAMILY,
@@ -28,6 +29,7 @@ import {
 } from '../../lib/chart-theme.ts';
 import { formatClock } from '../../lib/format.ts';
 import { useAppStore } from '../../stores/app-store.ts';
+import { StaleOverlay } from '../status/stale-overlay.tsx';
 import { EmptyState } from '../ui/empty-state.tsx';
 import { Panel } from '../ui/panel.tsx';
 
@@ -170,6 +172,7 @@ export function PriceChart() {
   const marketTitle = useAppStore(
     (state) => state.markets[state.selectedMarket]?.title,
   );
+  const isStale = useIsStale();
   const containerRef = useRef<HTMLDivElement>(null);
   const emptyRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<Chart | null>(null);
@@ -310,6 +313,7 @@ export function PriceChart() {
           ? 'Probability'
           : `Probability · ${marketTitle}`
       }
+      overlay={isStale && <StaleOverlay />}
     >
       <div ref={containerRef} className="absolute inset-0" />
       <div ref={emptyRef} className="absolute inset-0 bg-panel">

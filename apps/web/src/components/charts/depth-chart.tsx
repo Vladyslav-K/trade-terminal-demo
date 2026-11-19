@@ -8,9 +8,11 @@ import {
 } from '../../feed/frame-layout.ts';
 import { hotStore } from '../../feed/hot-store.ts';
 import { useCanvas, type CanvasSize } from '../../hooks/use-canvas.ts';
+import { useIsStale } from '../../hooks/use-stale-state.ts';
 import { CHART_COLORS, CHART_FONT } from '../../lib/chart-theme.ts';
 import { formatPrice, formatSize } from '../../lib/format.ts';
 import { useAppStore } from '../../stores/app-store.ts';
+import { StaleOverlay } from '../status/stale-overlay.tsx';
 import { EmptyState } from '../ui/empty-state.tsx';
 import { Panel } from '../ui/panel.tsx';
 
@@ -242,6 +244,7 @@ function drawFrame(
 // the next animation frame, and right away on a resize.
 export function DepthChart() {
   const market = useAppStore((state) => state.selectedMarket);
+  const isStale = useIsStale();
   const emptyRef = useRef<HTMLDivElement>(null);
 
   const handleRedraw = (context: CanvasRenderingContext2D, size: CanvasSize) =>
@@ -280,7 +283,7 @@ export function DepthChart() {
   }, [market, contextRef, sizeRef]);
 
   return (
-    <Panel title="Depth (both venues)">
+    <Panel title="Depth (both venues)" overlay={isStale && <StaleOverlay />}>
       <canvas
         ref={canvasRef}
         className="absolute inset-0 block h-full w-full"

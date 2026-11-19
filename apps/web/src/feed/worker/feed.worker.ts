@@ -7,6 +7,7 @@ import {
 import type {
   ConfigMessage,
   DeltaMessage,
+  FaultKind,
   HelloMessage,
   ServerMessage,
   SetMessage,
@@ -18,7 +19,7 @@ import type {
   VenueInfo,
 } from '@trade-terminal/protocol';
 
-import type { LogLevel } from '../../stores/app-store.ts';
+import type { ConnectionState, LogLevel } from '../../stores/app-store.ts';
 import type {
   MainToWorkerMessage,
   SetConfigMessage,
@@ -49,14 +50,17 @@ import {
 } from '../frame-layout.ts';
 import { computeProb } from './analytics.ts';
 import {
+  BOOK_WAITING,
   applyDelta,
   applySnapshot,
   bookIndex,
+  bookState,
   isBookCrossed,
   resetBooks,
   seq,
 } from './books.ts';
 import { createConnection } from './connection.ts';
+import type { ConnectionStatus } from './connection.ts';
 import {
   addStat,
   recordIngestLatency,
@@ -65,6 +69,7 @@ import {
 } from './counters.ts';
 import {
   buildFrame,
+  getSelectedMarket,
   markAllDirty,
   selectMarket,
   setNotional,
@@ -84,11 +89,21 @@ const INVALID_LOG_INTERVAL_MS = 1000;
 
 const scope = globalThis as unknown as DedicatedWorkerGlobalScope;
 
+// A reconnect ends when every book of the new session got its snapshot.
+// startedAt is the Date.now() at which the live connection was lost.
+interface Recovery {
+  startedAt: number;
+  syncedBooks: number;
+}
+
 let marketCount = 0;
 let venues: VenueInfo[] = [];
 let limits: StreamLimits = { maxRate: RATE_MAX, marketCounts: MARKET_COUNTS };
 let isHidden = false;
 let lastInvalidLogAt = 0;
+let connectionState: ConnectionState = 'connecting';
+let outageStartedAt: number | null = null;
+let recovery: Recovery | null = null;
 
 const post = (message: WorkerToMainMessage, transfer?: Transferable[]) => {
   scope.postMessage(message, transfer ?? []);
@@ -168,11 +183,27 @@ const handleDelta = (message: DeltaMessage, now: number): void => {
   }
 };
 
+const noteSyncedBook = (): void => {
+  if (recovery === null) {
+    return;
+  }
+  recovery.syncedBooks += 1;
+  if (recovery.syncedBooks < marketCount * VENUE_COUNT) {
+    return;
+  }
+  log(
+    'info',
+    `reconnected after ${Date.now() - recovery.startedAt} ms, ${recovery.syncedBooks} books resynced`,
+  );
+  recovery = null;
+};
+
 const handleSnapshot = (message: SnapshotMessage): void => {
   const { m, x } = message;
   if (!isBookRef(m, x)) {
     return;
   }
+  const wasWaiting = bookState[bookIndex(m, x)] === BOOK_WAITING;
   const wasResync = applySnapshot(
     m,
     x,
@@ -187,6 +218,9 @@ const handleSnapshot = (message: SnapshotMessage): void => {
       'info',
       `snapshot applied: market ${m} venue ${venueCode(x)}, seq ${message.seq}`,
     );
+  }
+  if (wasWaiting) {
+    noteSyncedBook();
   }
 };
 
@@ -254,7 +288,9 @@ const handleHello = (message: HelloMessage): void => {
   }
   if (result === 'reconnected') {
     addStat(RECONNECTS, 1);
+    recovery = { startedAt: outageStartedAt ?? Date.now(), syncedBooks: 0 };
   }
+  outageStartedAt = null;
   setMarketCount(toMarketCount(message.config.markets));
   venues = message.venues;
   limits = message.limits;
@@ -272,6 +308,9 @@ const handleConfig = (message: ConfigMessage): void => {
   if (nextCount !== marketCount) {
     resetBooks();
     setMarketCount(nextCount);
+    if (recovery !== null) {
+      recovery.syncedBooks = 0;
+    }
   }
   post({
     type: 'meta',
@@ -366,6 +405,20 @@ const handleSetConfig = (message: SetConfigMessage): void => {
   connection.send(command);
 };
 
+const handleFault = (kind: FaultKind): void => {
+  switch (kind) {
+    case 'drop':
+      log('info', `fault requested: ${kind}`);
+      connection.send({ t: 'fault', kind, m: getSelectedMarket(), x: 0 });
+      return;
+    case 'disconnect':
+    case 'stall':
+      log('info', `fault requested: ${kind}`);
+      connection.send({ t: 'fault', kind });
+      return;
+  }
+};
+
 const handleSelect = (market: number): void => {
   if (!isIndex(market, MAX_MARKETS)) {
     return;
@@ -422,11 +475,25 @@ const handleMainMessage = (event: MessageEvent<MainToWorkerMessage>): void => {
     case 'setNotional':
       handleSetNotional(message.notional);
       return;
+    case 'fault':
+      handleFault(message.kind);
+      return;
   }
 };
 
+// The outage starts when a connection that delivered data is lost.
+const handleStatus = (status: ConnectionStatus): void => {
+  const isLost = status.state === 'reconnecting' || status.state === 'offline';
+  const wasUp = connectionState === 'live' || connectionState === 'stale';
+  if (isLost && wasUp) {
+    outageStartedAt = Date.now();
+  }
+  connectionState = status.state;
+  post({ type: 'conn', ...status });
+};
+
 const connection = createConnection({
-  onStatus: (status) => post({ type: 'conn', ...status }),
+  onStatus: handleStatus,
   onLog: log,
   onBeforeConnect: resetBooks,
   onMessage: handleServerData,

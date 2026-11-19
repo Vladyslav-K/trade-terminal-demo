@@ -9,6 +9,7 @@ import {
   TRADE_VENUE,
 } from '../../feed/frame-layout.ts';
 import { hotStore } from '../../feed/hot-store.ts';
+import { useIsStale } from '../../hooks/use-stale-state.ts';
 import { cn } from '../../lib/cn.ts';
 import {
   formatClock,
@@ -21,6 +22,7 @@ import {
   writeTextCell,
   type TextCell,
 } from '../../lib/text-cell.ts';
+import { StaleOverlay } from '../status/stale-overlay.tsx';
 import { EmptyState } from '../ui/empty-state.tsx';
 import { Panel } from '../ui/panel.tsx';
 import { TRADE_COLUMNS, TradeRow, bindTradeRow } from './trade-row.tsx';
@@ -87,6 +89,7 @@ function setSequence(cells: TradeCells, sequence: number): void {
 // A fixed pool of rows: a new trade overwrites the oldest row and moves it to
 // the top through CSS order, so no DOM node is created or removed per trade.
 export function TradesTape() {
+  const isStale = useIsStale();
   const listRef = useRef<HTMLDivElement>(null);
   const emptyRef = useRef<HTMLDivElement>(null);
 
@@ -185,7 +188,7 @@ export function TradesTape() {
   }, []);
 
   return (
-    <Panel title="Trades">
+    <Panel title="Trades" overlay={isStale && <StaleOverlay />}>
       <div className="flex h-full flex-col">
         <div
           className={cn(

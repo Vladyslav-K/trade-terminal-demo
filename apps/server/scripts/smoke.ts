@@ -70,6 +70,13 @@ interface LocalBook {
   seq: number;
 }
 
+interface SequenceGap {
+  m: number;
+  x: number;
+  expected: number;
+  got: number;
+}
+
 // Rebuilds every book from snapshots and deltas and counts protocol violations.
 interface FeedProbe {
   books: Map<number, LocalBook>;
@@ -78,6 +85,7 @@ interface FeedProbe {
   windowStats: number;
   lastStats: StatsMessage | null;
   gaps: number;
+  lastGap: SequenceGap | null;
   crossed: number;
   badPrices: number;
   unknownBooks: number;
@@ -229,6 +237,7 @@ function createFeedProbe(): FeedProbe & {
     windowStats: 0,
     lastStats: null,
     gaps: 0,
+    lastGap: null,
     crossed: 0,
     badPrices: 0,
     unknownBooks: 0,
@@ -310,6 +319,12 @@ function createFeedProbe(): FeedProbe & {
         }
         if (message.seq !== book.seq + 1) {
           probe.gaps += 1;
+          probe.lastGap = {
+            m: message.m,
+            x: message.x,
+            expected: book.seq + 1,
+            got: message.seq,
+          };
         }
         book.seq = message.seq;
         applyLevels(book, message.b, message.a);
@@ -413,6 +428,45 @@ async function checkStream(url: string): Promise<void> {
   await closeClient(client);
 }
 
+async function checkDroppedDelta(url: string): Promise<void> {
+  const probe = createFeedProbe();
+  const client = openClient(url, ORIGIN, probe.handle);
+
+  const hello = await client.next('hello');
+  await waitUntil(
+    () => probe.books.size === hello.config.markets * VENUE_COUNT,
+    'initial snapshots',
+  );
+
+  // The first delta comes from a busy book, so its next delta follows soon.
+  const { m, x } = await client.next('d');
+  client.send({ t: 'fault', kind: 'drop', m, x });
+  await waitUntil(() => probe.gaps > 0, 'the gap after a dropped delta');
+  const gap = probe.lastGap;
+  check(
+    'dropped delta',
+    probe.gaps === 1 &&
+      gap !== null &&
+      gap.m === m &&
+      gap.x === x &&
+      gap.got === gap.expected + 1,
+    `book ${m}/${x}, ${probe.gaps} gap(s), last ${JSON.stringify(gap)}`,
+  );
+
+  client.send({ t: 'resync', m, x });
+  const snapshot = await client.next(
+    'snap',
+    (message) => message.m === m && message.x === x,
+  );
+  check(
+    'resync after a dropped delta',
+    gap !== null && snapshot.seq >= gap.expected,
+    `snapshot seq ${snapshot.seq}, dropped seq ${gap?.expected ?? 'none'}`,
+  );
+
+  await closeClient(client);
+}
+
 async function checkUpgrades(url: string, port: number): Promise<void> {
   const foreign = await upgradeStatus(url, FOREIGN_ORIGIN);
   check('foreign origin rejected', foreign === 403, `HTTP ${foreign}`);
@@ -502,6 +556,7 @@ async function main(): Promise<void> {
 
   try {
     await checkStream(url);
+    await checkDroppedDelta(url);
     await checkUpgrades(url, port);
     await checkCommands(url);
   } finally {
