@@ -1,4 +1,5 @@
 import { ConnectionBadge } from '../status/connection-badge.tsx';
+import { MessageRate } from '../status/message-rate.tsx';
 import { Badge } from '../ui/badge.tsx';
 
 export function TopBar() {
@@ -9,6 +10,9 @@ export function TopBar() {
       </h1>
       <Badge>DEMO · MOCK FEED</Badge>
       <ConnectionBadge />
+      <div className="ml-auto flex items-center gap-4">
+        <MessageRate />
+      </div>
     </header>
   );
 }
