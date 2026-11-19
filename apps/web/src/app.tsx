@@ -1,3 +1,5 @@
+import { DepthChart } from './components/charts/depth-chart.tsx';
+import { PriceChart } from './components/charts/price-chart.tsx';
 import { TerminalLayout } from './components/layout/terminal-layout.tsx';
 import { TopBar } from './components/layout/top-bar.tsx';
 import { MarketsTable } from './components/markets/markets-table.tsx';
@@ -14,16 +16,8 @@ export function App() {
     <TerminalLayout
       topBar={<TopBar />}
       markets={<MarketsTable />}
-      priceChart={
-        <Panel title="Probability">
-          <EmptyState>{WAITING_TEXT}</EmptyState>
-        </Panel>
-      }
-      depthChart={
-        <Panel title="Depth (both venues)">
-          <EmptyState>{WAITING_TEXT}</EmptyState>
-        </Panel>
-      }
+      priceChart={<PriceChart />}
+      depthChart={<DepthChart />}
       orderBook={<OrderBook />}
       trades={<TradesTape />}
       signals={<SignalsFeed />}
