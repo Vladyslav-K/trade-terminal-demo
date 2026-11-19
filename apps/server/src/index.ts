@@ -2,10 +2,13 @@ import { createServer } from 'node:http';
 
 import { readConfig } from './config.ts';
 import { createGateway } from './gateway/gateway.ts';
+import { createStaticHandler } from './static.ts';
 
 const SHUTDOWN_TIMEOUT_MS = 5000;
 
 const config = readConfig(process.env);
+const serveStatic =
+  config.webDist === null ? null : createStaticHandler(config.webDist);
 
 const server = createServer((req, res) => {
   const path = (req.url ?? '').split('?')[0];
@@ -13,6 +16,11 @@ const server = createServer((req, res) => {
   if (req.method === 'GET' && path === '/health') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('ok');
+    return;
+  }
+
+  if (serveStatic !== null) {
+    serveStatic(req, res);
     return;
   }
 

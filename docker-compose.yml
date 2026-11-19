@@ -1,0 +1,9 @@
+services:
+  terminal:
+    build: .
+    ports:
+      - '3001:3001'
+    environment:
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3001}
+      MAX_CONNECTIONS: ${MAX_CONNECTIONS:-4}
+      MAX_RATE: ${MAX_RATE:-20000}

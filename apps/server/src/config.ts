@@ -1,3 +1,6 @@
+import { statSync } from 'node:fs';
+import path from 'node:path';
+
 import { RATE_MAX, RATE_MIN } from '@trade-terminal/protocol';
 
 export interface ServerConfig {
@@ -9,6 +12,8 @@ export interface ServerConfig {
   maxRate: number;
   // null means every session gets its own random seed.
   seed: number | null;
+  // Absolute path of the built frontend; null disables static serving.
+  webDist: string | null;
 }
 
 const DEFAULT_PORT = 3001;
@@ -66,6 +71,31 @@ function readOrigins(raw: string | undefined): string[] {
     .map(toOrigin);
 }
 
+function getWebDistError(dir: string): string | null {
+  if (!path.isAbsolute(dir)) {
+    return `expected an absolute path, got "${dir}"`;
+  }
+  try {
+    return statSync(dir).isDirectory() ? null : `"${dir}" is not a directory`;
+  } catch (error) {
+    return error instanceof Error ? error.message : `cannot read "${dir}"`;
+  }
+}
+
+// An invalid WEB_DIST only disables static serving, the feed keeps working.
+function readWebDist(raw: string | undefined): string | null {
+  if (!isSet(raw)) {
+    return null;
+  }
+  const dir = raw.trim();
+  const error = getWebDistError(dir);
+  if (error !== null) {
+    console.warn(`WEB_DIST ignored: ${error}`);
+    return null;
+  }
+  return path.resolve(dir);
+}
+
 export function readConfig(env: NodeJS.ProcessEnv): ServerConfig {
   return {
     port: readInt('PORT', env.PORT, DEFAULT_PORT, 1, 65535),
@@ -89,5 +119,6 @@ export function readConfig(env: NodeJS.ProcessEnv): ServerConfig {
       RATE_MAX,
     ),
     seed: isSet(env.SEED) ? readInt('SEED', env.SEED, 0, 0, SEED_MAX) : null,
+    webDist: readWebDist(env.WEB_DIST),
   };
 }
