@@ -22,7 +22,7 @@ export function TerminalLayout({
   sidebar,
 }: TerminalLayoutProps) {
   return (
-    <div className="grid h-full min-h-[800px] min-w-[1440px] grid-cols-[400px_minmax(360px,1fr)_380px_280px] grid-rows-[44px_minmax(0,1fr)_280px] gap-px bg-line">
+    <div className="grid h-full min-h-[738px] min-w-[1280px] grid-cols-[380px_minmax(0,1fr)_350px_256px] grid-rows-[44px_minmax(0,1fr)_280px] gap-px bg-line min-[1440px]:grid-cols-[400px_minmax(360px,1fr)_380px_280px]">
       <div className="col-span-full row-start-1 grid min-w-0">{topBar}</div>
       <div className="col-start-1 row-start-2 row-end-4 grid min-h-0 min-w-0">
         {markets}
