@@ -3,18 +3,13 @@ import type { StreamConfig } from '@trade-terminal/protocol';
 import { useAppStore } from '../stores/app-store.ts';
 import type {
   MainToWorkerMessage,
+  MetaMessage,
   WorkerToMainMessage,
 } from './feed-messages.ts';
+import { hotStore } from './hot-store.ts';
 import { getWsUrl } from './ws-url.ts';
 
-// stats is indexed by the fields of frame-layout.ts; receivedAt is the
-// performance.now() at which the frame arrived.
-export interface LatestFrame {
-  stats: Float64Array | null;
-  receivedAt: number;
-}
-
-const latestFrame: LatestFrame = { stats: null, receivedAt: 0 };
+type AppState = ReturnType<typeof useAppStore.getState>;
 
 let worker: Worker | null = null;
 let isPullInFlight = false;
@@ -23,21 +18,41 @@ function post(message: MainToWorkerMessage): void {
   worker?.postMessage(message);
 }
 
+// The worker needs the selected market again after every meta: a new market
+// list resets its history, and a reconnect may bring a shorter list.
+function handleMeta(message: MetaMessage): void {
+  const store = useAppStore.getState();
+  if (message.markets.length !== store.markets.length) {
+    hotStore.reset();
+  }
+  store.setMarkets(message.markets);
+  store.setVenues(message.venues);
+  store.setConfig(message.config);
+  store.setLimits(message.limits);
+
+  const { selectedMarket } = useAppStore.getState();
+  const market = selectedMarket < message.markets.length ? selectedMarket : 0;
+  if (market !== selectedMarket) {
+    store.selectMarket(market);
+    return;
+  }
+  post({ type: 'select', market });
+}
+
 function handleWorkerMessage(event: MessageEvent<WorkerToMainMessage>): void {
   const message = event.data;
   const store = useAppStore.getState();
 
   switch (message.type) {
     case 'frame':
-      latestFrame.stats = message.stats;
-      latestFrame.receivedAt = performance.now();
       isPullInFlight = false;
+      hotStore.applyFrame(message);
+      return;
+    case 'history':
+      hotStore.applyHistory(message);
       return;
     case 'meta':
-      store.setMarkets(message.markets);
-      store.setVenues(message.venues);
-      store.setConfig(message.config);
-      store.setLimits(message.limits);
+      handleMeta(message);
       return;
     case 'conn':
       store.setConnection({
@@ -66,6 +81,15 @@ function handleWorkerError(event: ErrorEvent): void {
   });
 }
 
+function handleAppStateChange(state: AppState, previous: AppState): void {
+  if (state.selectedMarket !== previous.selectedMarket) {
+    post({ type: 'select', market: state.selectedMarket });
+  }
+  if (state.notional !== previous.notional) {
+    post({ type: 'setNotional', notional: state.notional });
+  }
+}
+
 function handleAnimationFrame(): void {
   if (!isPullInFlight) {
     isPullInFlight = true;
@@ -90,6 +114,8 @@ export function startFeed(): void {
   worker.addEventListener('error', handleWorkerError);
 
   post({ type: 'init', url: getWsUrl() });
+  post({ type: 'setNotional', notional: useAppStore.getState().notional });
+  useAppStore.subscribe(handleAppStateChange);
   handleVisibilityChange();
   document.addEventListener('visibilitychange', handleVisibilityChange);
   requestAnimationFrame(handleAnimationFrame);
@@ -97,8 +123,4 @@ export function startFeed(): void {
 
 export function setConfig(config: Partial<StreamConfig>): void {
   post({ type: 'setConfig', rate: config.rate, markets: config.markets });
-}
-
-export function getLatestFrame(): Readonly<LatestFrame> {
-  return latestFrame;
 }

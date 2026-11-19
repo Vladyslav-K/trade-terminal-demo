@@ -10,9 +10,11 @@ import type {
   HelloMessage,
   ServerMessage,
   SetMessage,
+  SignalMessage,
   SnapshotMessage,
   StatsMessage,
   StreamLimits,
+  TradeMessage,
   VenueInfo,
 } from '@trade-terminal/protocol';
 
@@ -40,7 +42,12 @@ import {
   SERVER_BUFFERED,
   SERVER_SENT,
   SERVER_THROTTLED,
+  SIGNAL_KIND_EDGE,
+  SIGNAL_KIND_SHIFT,
+  TRADE_SIDE_BUY,
+  TRADE_SIDE_SELL,
 } from '../frame-layout.ts';
+import { computeProb } from './analytics.ts';
 import {
   applyDelta,
   applySnapshot,
@@ -55,10 +62,22 @@ import {
   recordIngestLatency,
   rollIngestWindow,
   stats,
-  takeFrameStats,
 } from './counters.ts';
+import {
+  buildFrame,
+  markAllDirty,
+  selectMarket,
+  setNotional,
+} from './frame.ts';
+import {
+  closeSecond,
+  noteMarketTs,
+  recordSignal,
+  recordTrade,
+  resetHistory,
+} from './history.ts';
 
-const INGEST_WINDOW_MS = 1000;
+const SECOND_MS = 1000;
 // Invalid messages are logged at most once per interval, so a broken stream
 // cannot flood the event log.
 const INVALID_LOG_INTERVAL_MS = 1000;
@@ -95,6 +114,22 @@ const isIndex = (value: unknown, size: number): boolean =>
 const isBookRef = (m: unknown, x: unknown): boolean =>
   isIndex(m, marketCount) && isIndex(x, VENUE_COUNT);
 
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value);
+
+const serverNowSec = (): number =>
+  Math.floor((Date.now() + connection.clock.offset) / 1000);
+
+// History of the previous market list does not apply to the new one.
+const setMarketCount = (nextCount: number): void => {
+  if (nextCount === marketCount) {
+    return;
+  }
+  marketCount = nextCount;
+  resetHistory(serverNowSec());
+  markAllDirty();
+};
+
 const trackDataMessage = (ts: number, now: number): void => {
   if (connection.clock.isReady) {
     recordIngestLatency(now + connection.clock.offset - ts);
@@ -117,6 +152,7 @@ const handleDelta = (message: DeltaMessage, now: number): void => {
   const result = applyDelta(m, x, message.seq, message.b, message.a);
 
   if (result === 'applied') {
+    noteMarketTs(m, message.ts);
     if (isBookCrossed(m, x)) {
       addStat(CROSSED, 1);
     }
@@ -144,12 +180,70 @@ const handleSnapshot = (message: SnapshotMessage): void => {
     message.bids,
     message.asks,
   );
+  noteMarketTs(m, message.ts);
   if (wasResync) {
     addStat(RESYNCS, 1);
     log(
       'info',
       `snapshot applied: market ${m} venue ${venueCode(x)}, seq ${message.seq}`,
     );
+  }
+};
+
+const handleTrade = (message: TradeMessage, now: number): void => {
+  addStat(RECEIVED_TRADES, 1);
+  trackDataMessage(message.ts, now);
+
+  const { m, x, ts, p, s, side } = message;
+  if (
+    !isBookRef(m, x) ||
+    !isFiniteNumber(ts) ||
+    !isFiniteNumber(p) ||
+    !isFiniteNumber(s) ||
+    s < 0 ||
+    (side !== 'b' && side !== 's')
+  ) {
+    return;
+  }
+  recordTrade(m, ts, x, p, s, side === 'b' ? TRADE_SIDE_BUY : TRADE_SIDE_SELL);
+};
+
+const handleSignal = (message: SignalMessage, now: number): void => {
+  addStat(RECEIVED_SIGNALS, 1);
+  trackDataMessage(message.ts, now);
+
+  const { id, m, ts, value } = message;
+  if (
+    !isIndex(m, marketCount) ||
+    !isFiniteNumber(id) ||
+    !isFiniteNumber(ts) ||
+    !isFiniteNumber(value)
+  ) {
+    return;
+  }
+
+  switch (message.kind) {
+    case 'edge':
+      if (
+        isIndex(message.buy, VENUE_COUNT) &&
+        isIndex(message.sell, VENUE_COUNT)
+      ) {
+        recordSignal(
+          id,
+          m,
+          ts,
+          SIGNAL_KIND_EDGE,
+          message.buy,
+          message.sell,
+          value,
+        );
+      }
+      return;
+    case 'shift':
+      if (message.dir === 1 || message.dir === -1) {
+        recordSignal(id, m, ts, SIGNAL_KIND_SHIFT, message.dir, 0, value);
+      }
+      return;
   }
 };
 
@@ -161,7 +255,7 @@ const handleHello = (message: HelloMessage): void => {
   if (result === 'reconnected') {
     addStat(RECONNECTS, 1);
   }
-  marketCount = toMarketCount(message.config.markets);
+  setMarketCount(toMarketCount(message.config.markets));
   venues = message.venues;
   limits = message.limits;
   post({
@@ -177,7 +271,7 @@ const handleConfig = (message: ConfigMessage): void => {
   const nextCount = toMarketCount(message.config.markets);
   if (nextCount !== marketCount) {
     resetBooks();
-    marketCount = nextCount;
+    setMarketCount(nextCount);
   }
   post({
     type: 'meta',
@@ -220,12 +314,10 @@ const processMessage = (data: string, now: number): void => {
       handleDelta(message, now);
       return;
     case 'tr':
-      addStat(RECEIVED_TRADES, 1);
-      trackDataMessage(message.ts, now);
+      handleTrade(message, now);
       return;
     case 'sig':
-      addStat(RECEIVED_SIGNALS, 1);
-      trackDataMessage(message.ts, now);
+      handleSignal(message, now);
       return;
     case 'snap':
       handleSnapshot(message);
@@ -274,6 +366,28 @@ const handleSetConfig = (message: SetConfigMessage): void => {
   connection.send(command);
 };
 
+const handleSelect = (market: number): void => {
+  if (!isIndex(market, MAX_MARKETS)) {
+    return;
+  }
+  const { message, transfer } = selectMarket(market, marketCount);
+  post(message, transfer);
+};
+
+const handleSetNotional = (notional: number): void => {
+  if (isFiniteNumber(notional) && notional > 0) {
+    setNotional(notional);
+  }
+};
+
+// Every second the sparklines and candles advance and the 60 s shift of
+// every market moves, so all rows are rebuilt in the next frame.
+const handleSecond = (): void => {
+  rollIngestWindow();
+  closeSecond(marketCount, serverNowSec(), computeProb);
+  markAllDirty();
+};
+
 // While the tab is hidden nothing is drawn, so OLDEST_TS is not tracked:
 // otherwise the first frame after the return would report the whole
 // hidden period as screen latency.
@@ -292,8 +406,8 @@ const handleMainMessage = (event: MessageEvent<MainToWorkerMessage>): void => {
       connection.start(message.url);
       return;
     case 'pull': {
-      const frame = takeFrameStats();
-      post({ type: 'frame', stats: frame }, [frame.buffer]);
+      const { message: frame, transfer } = buildFrame(marketCount);
+      post(frame, transfer);
       return;
     }
     case 'visibility':
@@ -301,6 +415,12 @@ const handleMainMessage = (event: MessageEvent<MainToWorkerMessage>): void => {
       return;
     case 'setConfig':
       handleSetConfig(message);
+      return;
+    case 'select':
+      handleSelect(message.market);
+      return;
+    case 'setNotional':
+      handleSetNotional(message.notional);
       return;
   }
 };
@@ -313,4 +433,4 @@ const connection = createConnection({
 });
 
 scope.addEventListener('message', handleMainMessage);
-setInterval(rollIngestWindow, INGEST_WINDOW_MS);
+setInterval(handleSecond, SECOND_MS);

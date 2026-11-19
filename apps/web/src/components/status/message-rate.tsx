@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
-import { getLatestFrame } from '../../feed/feed-client.ts';
 import { RECEIVED_TOTAL } from '../../feed/frame-layout.ts';
+import { hotStore } from '../../feed/hot-store.ts';
 
 const UPDATE_INTERVAL_MS = 1000;
 
@@ -15,7 +15,8 @@ export function MessageRate() {
     let previousAt = 0;
 
     const handleTick = () => {
-      const { stats, receivedAt } = getLatestFrame();
+      const stats = hotStore.getStats();
+      const receivedAt = hotStore.getStatsReceivedAt();
       const valueElement = valueRef.current;
 
       if (stats === null || valueElement === null) {

@@ -27,13 +27,55 @@ export interface SetConfigMessage {
   markets?: number;
 }
 
-export type MainToWorkerMessage =
-  InitMessage | PullMessage | VisibilityMessage | SetConfigMessage;
+export interface SelectMessage {
+  type: 'select';
+  market: number;
+}
 
-// stats is indexed by the fields of frame-layout.ts.
+// notional is the size in contracts the executable edge is computed for.
+export interface SetNotionalMessage {
+  type: 'setNotional';
+  notional: number;
+}
+
+export type MainToWorkerMessage =
+  | InitMessage
+  | PullMessage
+  | VisibilityMessage
+  | SetConfigMessage
+  | SelectMessage
+  | SetNotionalMessage;
+
+// The selected market's book slices and its open candle, laid out as
+// described in frame-layout.ts.
+export interface SelectedFrame {
+  market: number;
+  ladders: Int32Array<ArrayBuffer>;
+  depth: Int32Array<ArrayBuffer>;
+  candle: Float64Array<ArrayBuffer>;
+}
+
+// stats is indexed by the fields of frame-layout.ts. rows holds the markets
+// changed since the previous frame, ROW_FIELDS values each; trades are new
+// trades of the selected market and signals are new signals, oldest first.
+// sparks comes once per second, SPARK_POINTS values per market. null means
+// nothing changed.
 export interface FrameMessage {
   type: 'frame';
   stats: Float64Array<ArrayBuffer>;
+  rows: Float64Array<ArrayBuffer> | null;
+  selected: SelectedFrame | null;
+  trades: Float64Array<ArrayBuffer> | null;
+  signals: Float64Array<ArrayBuffer> | null;
+  sparks?: Float32Array<ArrayBuffer>;
+}
+
+// Closed candles and the latest trades of the market, oldest first.
+export interface HistoryMessage {
+  type: 'history';
+  market: number;
+  candles: Float64Array<ArrayBuffer>;
+  trades: Float64Array<ArrayBuffer>;
 }
 
 export interface MetaMessage {
@@ -61,4 +103,4 @@ export interface LogMessage {
 }
 
 export type WorkerToMainMessage =
-  FrameMessage | MetaMessage | ConnMessage | LogMessage;
+  FrameMessage | HistoryMessage | MetaMessage | ConnMessage | LogMessage;
