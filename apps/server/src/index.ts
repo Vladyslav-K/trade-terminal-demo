@@ -1,18 +1,11 @@
 import { createServer } from 'node:http';
 
-function readPort(raw: string | undefined): number {
-  if (raw === undefined) {
-    return 3001;
-  }
-  const port = Number(raw);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error(`Invalid PORT: ${raw}`);
-  }
-  return port;
-}
+import { readConfig } from './config.ts';
+import { createGateway } from './gateway/gateway.ts';
 
-const PORT = readPort(process.env.PORT);
-const HOST = process.env.HOST ?? '127.0.0.1';
+const SHUTDOWN_TIMEOUT_MS = 5000;
+
+const config = readConfig(process.env);
 
 const server = createServer((req, res) => {
   const path = (req.url ?? '').split('?')[0];
@@ -27,6 +20,30 @@ const server = createServer((req, res) => {
   res.end('not found');
 });
 
-server.listen(PORT, HOST, () => {
-  console.log(`listening on http://${HOST}:${PORT}`);
+const gateway = createGateway(server, config);
+
+server.listen(config.port, config.host, () => {
+  console.log(`listening on http://${config.host}:${config.port}`);
 });
+
+let isShuttingDown = false;
+
+function shutdown(signal: NodeJS.Signals): void {
+  if (isShuttingDown) {
+    return;
+  }
+  isShuttingDown = true;
+  console.log(`${signal} received, shutting down`);
+
+  setTimeout(() => {
+    console.error('shutdown timed out');
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT_MS).unref();
+
+  void gateway.close().then(() => {
+    server.close(() => process.exit(0));
+  });
+}
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
