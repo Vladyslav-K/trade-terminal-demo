@@ -1,5 +1,6 @@
 import { TerminalLayout } from './components/layout/terminal-layout.tsx';
 import { TopBar } from './components/layout/top-bar.tsx';
+import { MarketsTable } from './components/markets/markets-table.tsx';
 import { EmptyState } from './components/ui/empty-state.tsx';
 import { Panel } from './components/ui/panel.tsx';
 
@@ -9,11 +10,7 @@ export function App() {
   return (
     <TerminalLayout
       topBar={<TopBar />}
-      markets={
-        <Panel title="Markets">
-          <EmptyState>{WAITING_TEXT}</EmptyState>
-        </Panel>
-      }
+      markets={<MarketsTable />}
       priceChart={
         <Panel title="Probability">
           <EmptyState>{WAITING_TEXT}</EmptyState>

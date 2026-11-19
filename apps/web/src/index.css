@@ -13,6 +13,28 @@
   --color-warn: #f5a524;
   --font-sans: ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --animate-flash-a: flash-a 300ms ease-out;
+  --animate-flash-b: flash-b 300ms ease-out;
+
+  @keyframes flash-a {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.55;
+    }
+  }
+
+  @keyframes flash-b {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.55;
+    }
+  }
 }
 
 @layer base {

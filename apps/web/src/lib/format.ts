@@ -24,6 +24,14 @@ export function formatPrice(ticks: number): string {
   return `${(ticks / 10).toFixed(1)}¢`;
 }
 
+// Same as formatPrice without the ¢ sign.
+export function formatPlainPrice(ticks: number): string {
+  if (!Number.isFinite(ticks) || ticks <= 0) {
+    return NO_DATA;
+  }
+  return (ticks / 10).toFixed(1);
+}
+
 // A change that rounds to zero has no sign.
 export function formatSignedPrice(ticks: number): string {
   if (!Number.isFinite(ticks)) {
@@ -34,6 +42,14 @@ export function formatSignedPrice(ticks: number): string {
     return `${text}¢`;
   }
   return `${ticks > 0 ? '+' : MINUS}${text}¢`;
+}
+
+// Sign of a formatSignedPrice result: 1, -1, or 0 when the text has no sign.
+export function signOfFormatted(text: string): number {
+  if (text.startsWith('+')) {
+    return 1;
+  }
+  return text.startsWith(MINUS) ? -1 : 0;
 }
 
 export function formatSize(size: number): string {
