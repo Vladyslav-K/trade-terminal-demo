@@ -1,5 +1,6 @@
 import { DepthChart } from './components/charts/depth-chart.tsx';
 import { PriceChart } from './components/charts/price-chart.tsx';
+import { BenchmarkPanel } from './components/controls/benchmark-panel.tsx';
 import { FaultControls } from './components/controls/fault-controls.tsx';
 import { LoadControls } from './components/controls/load-controls.tsx';
 import { TerminalLayout } from './components/layout/terminal-layout.tsx';
@@ -10,10 +11,6 @@ import { PerfHud } from './components/perf/perf-hud.tsx';
 import { SignalsFeed } from './components/signals/signals-feed.tsx';
 import { EventLog } from './components/status/event-log.tsx';
 import { TradesTape } from './components/trades/trades-tape.tsx';
-import { EmptyState } from './components/ui/empty-state.tsx';
-import { Panel } from './components/ui/panel.tsx';
-
-const WAITING_TEXT = 'Waiting for data…';
 
 export function App() {
   return (
@@ -30,9 +27,7 @@ export function App() {
           <PerfHud />
           <LoadControls />
           <FaultControls />
-          <Panel title="Benchmark" className="h-[120px] shrink-0">
-            <EmptyState>{WAITING_TEXT}</EmptyState>
-          </Panel>
+          <BenchmarkPanel />
           <EventLog />
         </>
       }

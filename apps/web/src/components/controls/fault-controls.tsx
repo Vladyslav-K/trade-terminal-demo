@@ -6,6 +6,7 @@ import { hotStore } from '../../feed/hot-store.ts';
 import { formatMeasure } from '../../lib/format.ts';
 import { createTextCell, writeTextCell } from '../../lib/text-cell.ts';
 import { useAppStore } from '../../stores/app-store.ts';
+import { useBenchmarkStore } from '../../stores/benchmark-store.ts';
 import { Button } from '../ui/button.tsx';
 import { Panel } from '../ui/panel.tsx';
 
@@ -25,6 +26,10 @@ const COUNTERS: readonly FaultCounter[] = [
 // Counter values are written straight into the DOM on a timer.
 export function FaultControls() {
   const isLive = useAppStore((state) => state.connection.state === 'live');
+  const isBenchmarkRunning = useBenchmarkStore(
+    (state) => state.status === 'running',
+  );
+  const isDisabled = !isLive || isBenchmarkRunning;
   const valueRefs = useRef<Array<HTMLSpanElement | null>>([]);
 
   useEffect(() => {
@@ -59,15 +64,15 @@ export function FaultControls() {
         <div className="grid grid-cols-2 gap-1.5">
           <Button
             className="col-span-2"
-            isDisabled={!isLive}
+            isDisabled={isDisabled}
             onClick={handleDrop}
           >
             Drop a delta
           </Button>
-          <Button isDisabled={!isLive} onClick={handleDisconnect}>
+          <Button isDisabled={isDisabled} onClick={handleDisconnect}>
             Disconnect
           </Button>
-          <Button isDisabled={!isLive} onClick={handleStall}>
+          <Button isDisabled={isDisabled} onClick={handleStall}>
             Stall 10s
           </Button>
         </div>

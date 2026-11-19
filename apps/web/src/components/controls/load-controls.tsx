@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { setConfig } from '../../feed/feed-client.ts';
 import { useAppStore, type Notional } from '../../stores/app-store.ts';
+import { useBenchmarkStore } from '../../stores/benchmark-store.ts';
 import { Panel } from '../ui/panel.tsx';
 import { Segmented, type SegmentedOption } from '../ui/segmented.tsx';
 import { Slider } from '../ui/slider.tsx';
@@ -57,6 +58,9 @@ export function LoadControls() {
   const notional = useAppStore((state) => state.notional);
   const setNotional = useAppStore((state) => state.setNotional);
   const isLive = useAppStore((state) => state.connection.state === 'live');
+  const isBenchmarkRunning = useBenchmarkStore(
+    (state) => state.status === 'running',
+  );
 
   const [draft, setDraft] = useState<RateDraft | null>(null);
   const timerRef = useRef(0);
@@ -74,7 +78,7 @@ export function LoadControls() {
     value: count,
     label: String(count),
   }));
-  const isDisabled = !isLive;
+  const isDisabled = !isLive || isBenchmarkRunning;
 
   const handleRateChange = (nextPosition: number) => {
     const nextRate = positionToRate(nextPosition, limits.maxRate);
