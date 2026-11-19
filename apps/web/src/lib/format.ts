@@ -3,6 +3,7 @@
 
 const NO_DATA = '—';
 const MINUS = '−';
+const VENUE_LETTERS: readonly string[] = ['A', 'B'];
 
 const clockDate = new Date();
 
@@ -42,6 +43,21 @@ export function formatSignedPrice(ticks: number): string {
     return `${text}¢`;
   }
   return `${ticks > 0 ? '+' : MINUS}${text}¢`;
+}
+
+// Spread of one book in ticks. It has no plus sign, and a negative value,
+// which only a broken book can produce, keeps its minus.
+export function formatSpread(ticks: number): string {
+  if (!Number.isFinite(ticks)) {
+    return NO_DATA;
+  }
+  const text = (Math.abs(ticks) / 10).toFixed(1);
+  return ticks < 0 && text !== '0.0' ? `${MINUS}${text}¢` : `${text}¢`;
+}
+
+// Venue index 0 is A, 1 is B.
+export function formatVenue(venue: number): string {
+  return VENUE_LETTERS[venue] ?? NO_DATA;
 }
 
 // Sign of a formatSignedPrice result: 1, -1, or 0 when the text has no sign.

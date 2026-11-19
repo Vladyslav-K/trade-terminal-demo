@@ -1,6 +1,9 @@
 import { TerminalLayout } from './components/layout/terminal-layout.tsx';
 import { TopBar } from './components/layout/top-bar.tsx';
 import { MarketsTable } from './components/markets/markets-table.tsx';
+import { OrderBook } from './components/orderbook/order-book.tsx';
+import { SignalsFeed } from './components/signals/signals-feed.tsx';
+import { TradesTape } from './components/trades/trades-tape.tsx';
 import { EmptyState } from './components/ui/empty-state.tsx';
 import { Panel } from './components/ui/panel.tsx';
 
@@ -21,21 +24,9 @@ export function App() {
           <EmptyState>{WAITING_TEXT}</EmptyState>
         </Panel>
       }
-      orderBook={
-        <Panel title="Order Book">
-          <EmptyState>{WAITING_TEXT}</EmptyState>
-        </Panel>
-      }
-      trades={
-        <Panel title="Trades">
-          <EmptyState>{WAITING_TEXT}</EmptyState>
-        </Panel>
-      }
-      signals={
-        <Panel title="Signals">
-          <EmptyState>{WAITING_TEXT}</EmptyState>
-        </Panel>
-      }
+      orderBook={<OrderBook />}
+      trades={<TradesTape />}
+      signals={<SignalsFeed />}
       sidebar={
         <>
           <Panel title="Performance" className="h-[360px] shrink-0">

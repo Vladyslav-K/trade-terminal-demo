@@ -10,6 +10,7 @@ import {
   formatSignedPrice,
   signOfFormatted,
 } from '../lib/format.ts';
+import { createTextCell, writeTextCell } from '../lib/text-cell.ts';
 
 type CellRef = RefObject<HTMLSpanElement | null>;
 
@@ -21,27 +22,9 @@ export interface RowBinding {
   edgeRef: CellRef;
 }
 
-interface Cell {
-  element: HTMLElement;
-  text: string;
-}
-
 const TONES = ['text-bid', 'text-ask', 'text-muted'] as const;
 
 type Tone = (typeof TONES)[number];
-
-function createCell(element: HTMLElement): Cell {
-  return { element, text: '' };
-}
-
-function writeCell(cell: Cell, text: string): boolean {
-  if (cell.text === text) {
-    return false;
-  }
-  cell.element.textContent = text;
-  cell.text = text;
-  return true;
-}
 
 function setTone(element: HTMLElement, tone: Tone): void {
   for (const candidate of TONES) {
@@ -80,16 +63,19 @@ export function useRowBinding(market: number): RowBinding {
       return;
     }
 
-    const prob = createCell(probElement);
-    const shift = createCell(shiftElement);
-    const bid = createCell(bidElement);
-    const ask = createCell(askElement);
-    const edge = createCell(edgeElement);
+    const prob = createTextCell(probElement);
+    const shift = createTextCell(shiftElement);
+    const bid = createTextCell(bidElement);
+    const ask = createTextCell(askElement);
+    const edge = createTextCell(edgeElement);
 
     const handleRowChange = () => {
       const hadProb = prob.text !== '';
       if (
-        writeCell(prob, formatPrice(hotStore.getRowValue(market, ROW_PROB))) &&
+        writeTextCell(
+          prob,
+          formatPrice(hotStore.getRowValue(market, ROW_PROB)),
+        ) &&
         hadProb
       ) {
         flash(probElement);
@@ -97,7 +83,7 @@ export function useRowBinding(market: number): RowBinding {
 
       const shiftSign = shift.text === '' ? NaN : signOfFormatted(shift.text);
       if (
-        writeCell(
+        writeTextCell(
           shift,
           formatSignedPrice(hotStore.getRowValue(market, ROW_SHIFT)),
         )
@@ -108,12 +94,12 @@ export function useRowBinding(market: number): RowBinding {
         }
       }
 
-      writeCell(bid, formatPlainPrice(getBestBid(market)));
-      writeCell(ask, formatPlainPrice(getBestAsk(market)));
+      writeTextCell(bid, formatPlainPrice(getBestBid(market)));
+      writeTextCell(ask, formatPlainPrice(getBestAsk(market)));
 
       const isEdgePositive =
         edge.text === '' ? null : signOfFormatted(edge.text) > 0;
-      if (writeCell(edge, formatSignedPrice(getEdge(market)))) {
+      if (writeTextCell(edge, formatSignedPrice(getEdge(market)))) {
         const isNextPositive = signOfFormatted(edge.text) > 0;
         if (isNextPositive !== isEdgePositive) {
           setTone(edgeElement, isNextPositive ? 'text-bid' : 'text-muted');
