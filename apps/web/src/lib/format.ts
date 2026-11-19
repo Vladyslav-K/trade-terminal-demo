@@ -3,6 +3,9 @@
 
 const NO_DATA = '—';
 const MINUS = '−';
+
+// A metric the browser does not provide.
+export const NOT_AVAILABLE = 'n/a';
 const VENUE_LETTERS: readonly string[] = ['A', 'B'];
 
 const clockDate = new Date();
@@ -90,6 +93,19 @@ export function formatSize(size: number): string {
     return `${sign}${millions.toFixed(1)}M`;
   }
   return `${sign}${Math.round(millions)}M`;
+}
+
+// A non-negative measured value with fractionDigits decimals; unit is
+// appended as is, so it carries its own leading space when it needs one.
+export function formatMeasure(
+  value: number,
+  unit = '',
+  fractionDigits = 0,
+): string {
+  if (!Number.isFinite(value)) {
+    return NO_DATA;
+  }
+  return `${value.toFixed(fractionDigits)}${unit}`;
 }
 
 // Local time HH:MM:SS of a Date.now() timestamp; 0 means no data.

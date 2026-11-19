@@ -1,9 +1,11 @@
 import { DepthChart } from './components/charts/depth-chart.tsx';
 import { PriceChart } from './components/charts/price-chart.tsx';
+import { LoadControls } from './components/controls/load-controls.tsx';
 import { TerminalLayout } from './components/layout/terminal-layout.tsx';
 import { TopBar } from './components/layout/top-bar.tsx';
 import { MarketsTable } from './components/markets/markets-table.tsx';
 import { OrderBook } from './components/orderbook/order-book.tsx';
+import { PerfHud } from './components/perf/perf-hud.tsx';
 import { SignalsFeed } from './components/signals/signals-feed.tsx';
 import { TradesTape } from './components/trades/trades-tape.tsx';
 import { EmptyState } from './components/ui/empty-state.tsx';
@@ -23,12 +25,8 @@ export function App() {
       signals={<SignalsFeed />}
       sidebar={
         <>
-          <Panel title="Performance" className="h-[360px] shrink-0">
-            <EmptyState>{WAITING_TEXT}</EmptyState>
-          </Panel>
-          <Panel title="Load" className="h-[200px] shrink-0">
-            <EmptyState>{WAITING_TEXT}</EmptyState>
-          </Panel>
+          <PerfHud />
+          <LoadControls />
           <Panel title="Fault injection" className="h-[120px] shrink-0">
             <EmptyState>{WAITING_TEXT}</EmptyState>
           </Panel>

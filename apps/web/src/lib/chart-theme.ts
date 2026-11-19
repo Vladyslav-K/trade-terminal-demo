@@ -4,6 +4,7 @@ export const CHART_COLORS = {
   panel: '#11151c',
   line: '#1e2530',
   muted: '#7c8696',
+  accent: '#4c8dff',
   bid: '#22c38e',
   ask: '#f0506e',
   bidFill: 'rgba(34, 195, 142, 0.2)',
